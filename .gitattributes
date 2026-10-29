@@ -1,0 +1,3 @@
+# Preserve upstream generated protobuf code verbatim; its formatting is protoc output.
+app/src/main/java/com/ryzen/tvremote/protocol/pairing/*.java whitespace=-blank-at-eol,-blank-at-eof
+app/src/main/java/com/ryzen/tvremote/protocol/remote/*.java whitespace=-blank-at-eol,-blank-at-eof

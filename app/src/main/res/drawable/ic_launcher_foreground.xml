@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Original eight-point compass-star: navigation with a little enchantment. -->
+    <path android:fillColor="#E9CE8A"
+        android:pathData="M54,22 L60,46 L84,54 L60,62 L54,86 L48,62 L24,54 L48,46 Z" />
+    <path android:fillColor="#FFFCF5"
+        android:pathData="M54,46 a8,8 0,1 0,0 16 a8,8 0,1 0,0 -16" />
+    <path android:fillColor="#E9CE8A"
+        android:pathData="M77,25 L79,30 L84,32 L79,34 L77,39 L75,34 L70,32 L75,30 Z" />
+</vector>
