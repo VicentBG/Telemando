@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -100,6 +101,7 @@ class AndroidTvRemoteV2Client(
     private suspend fun connectInternal(host: String) {
         _status.value = ConnectionStatus.Connecting("Connecting to $host:$DEFAULT_REMOTE_PORT...")
         var openingSocket: SSLSocket? = null
+        var sessionSocket: SSLSocket? = null
 
         try {
             val pin = KeyManagerHelper.getPinnedFingerprint(context, host)
@@ -126,6 +128,7 @@ class AndroidTvRemoteV2Client(
             }
 
             remoteSocket = socket
+            sessionSocket = socket
             openingSocket = null
             remoteOut = socket.outputStream
             val inputStream = socket.inputStream
@@ -135,8 +138,8 @@ class AndroidTvRemoteV2Client(
             val channel = Channel<RemoteMessage>(Channel.UNLIMITED)
             sendChannel = channel
             sendJob = scope.launch(Dispatchers.IO) {
+                val out = socket.outputStream
                 for (msg in channel) {
-                    val out = remoteOut ?: break
                     try {
                         synchronized(sendLock) {
                             msg.writeDelimitedTo(out)
@@ -144,21 +147,26 @@ class AndroidTvRemoteV2Client(
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error writing message to remote socket: ${e.message}", e)
-                        if (remoteSocket?.isConnected != true) {
-                            break
-                        }
+                        // Closing the failing socket wakes the reader, which marks this
+                        // specific session disconnected so the UI can reconnect.
+                        try { socket.close() } catch (_: Exception) {}
+                        break
                     }
                 }
             }
 
             _status.value = ConnectionStatus.Connecting("Configuring session...")
-            readRemoteLoop(inputStream)
+            readRemoteLoop(socket, inputStream)
 
         } catch (e: Exception) {
             try { openingSocket?.close() } catch (_: Exception) {}
-            try { remoteSocket?.close() } catch (_: Exception) {}
-            remoteSocket = null
-            remoteOut = null
+            if (remoteSocket === sessionSocket && sessionSocket != null) {
+                try { sessionSocket.close() } catch (_: Exception) {}
+                remoteSocket = null
+                remoteOut = null
+            }
+            // A deliberately cancelled old session must not overwrite a newer connection.
+            if (!currentCoroutineContext().isActive) return
             Log.w(TAG, "Failed to connect to remote service on port $DEFAULT_REMOTE_PORT: ${e.message}")
             val alreadyPaired = KeyManagerHelper.isHostPaired(context, host)
             if (!alreadyPaired && (e is SSLException || e.cause is SSLException || e.message?.contains("handshake", ignoreCase = true) == true)) {
@@ -331,10 +339,8 @@ class AndroidTvRemoteV2Client(
         pairingServerCert = null
     }
 
-    private suspend fun readRemoteLoop(input: InputStream) {
-        val out = remoteOut ?: return
-
-        while (scope.isActive && remoteSocket?.isConnected == true) {
+    private suspend fun readRemoteLoop(socket: SSLSocket, input: InputStream) {
+        while (scope.isActive && remoteSocket === socket && !socket.isClosed) {
             val msg = try {
                 RemoteMessage.parseDelimitedFrom(input)
             } catch (e: Exception) {
@@ -416,14 +422,20 @@ class AndroidTvRemoteV2Client(
             }
         }
 
-        // Connection dropped
-        _status.value = ConnectionStatus.Disconnected
+        // Only the current socket can change the UI state. A cancelled older reader
+        // must not turn a successful new session into a spurious disconnect.
+        if (remoteSocket === socket) {
+            try { socket.close() } catch (_: Exception) {}
+            remoteSocket = null
+            remoteOut = null
+            _status.value = ConnectionStatus.Disconnected
+        }
     }
 
     private fun sendRaw(msg: RemoteMessage) {
         val out = remoteOut
         val sock = remoteSocket
-        if (out == null || sock == null || !sock.isConnected) {
+        if (out == null || sock == null || sock.isClosed) {
             Log.w(TAG, "Cannot send raw message: remote socket not connected (out=$out, sock=${sock?.isConnected})")
             return
         }
@@ -432,7 +444,7 @@ class AndroidTvRemoteV2Client(
 
     override fun sendKey(key: RemoteKey, direction: KeyDirection) {
         val out = remoteOut
-        if (out == null || remoteSocket?.isConnected != true) {
+        if (out == null || remoteSocket?.isClosed != false) {
             Log.w(TAG, "Cannot send key ${key.displayName}: remote socket not connected (out=$out, connected=${remoteSocket?.isConnected})")
             return
         }

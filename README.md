@@ -1,18 +1,18 @@
 # Telemando ✦
 
-Mando Android para una **TCL 43C61B con Google TV**. La interfaz de la televisión sigue en la TV: desde el móvil puedes navegar y escribir búsquedas. Diseño original de fantasía mágica, con tonos pergamino, tinta azul noche y detalles dorados. No contiene imágenes, nombres ni recursos oficiales de ninguna franquicia.
+Mando Android para una **TCL 43C61B con Google TV**. La interfaz de la televisión sigue en la TV: desde el móvil puedes navegar y escribir búsquedas. Diseño original de fantasía mágica, con tonos pergamino, tinta azul noche y detalles dorados. Se adapta al modo claro/oscuro del sistema. No contiene imágenes, nombres ni recursos oficiales de ninguna franquicia.
 
 ## Funciones
 
 - Detectar y emparejar Google TV mediante un código mostrado en la pantalla; conectar por IP si no aparece automáticamente.
-- Recordar la TV, reconectar al abrir y ofrecer reintento si falla la conexión.
+- Recordar la TV, reconectar al abrir y ofrecer reintento si falla la conexión. Tras volver de un periodo largo en segundo plano se renueva una sesión antigua; el escaneo Wi-Fi se detiene mientras la app está en segundo plano.
 - Navegar con cruceta, OK, Inicio y Atrás; controlar volumen y silencio.
 - Buscar desde el teclado del móvil: **Rápido** para YouTube y **Pausado** para Netflix. Telemando recuerda el método elegido y permite limpiar el texto antes de otra búsqueda.
-- Tres secciones accesibles desde la barra inferior: **Mando**, **Buscar** y **Conexión**.
+- Tres secciones accesibles desde la barra inferior: **Mando**, **Buscar** y **Conexión**. Los controles táctiles tienen nombres accesibles; en pantallas pequeñas o con texto ampliado el mando se compacta manteniendo botones de al menos 48 dp.
 
 ### Compatibilidad comprobada
 
-Emparejamiento, navegación, volumen, reconexión, búsqueda en YouTube (rápido) y Netflix (pausado) se probaron en la TCL 43C61B. Prime Video no acepta texto remoto en este modelo: usa la cruceta para recorrer su teclado en pantalla. RTVE Play aún no se ha probado. La fase de interfaz rediseñada y su comportamiento en diferentes tamaños de pantalla están pendientes de una prueba en dispositivo.
+Emparejamiento, navegación, volumen, reconexión, búsqueda en YouTube (rápido) y Netflix (pausado) se probaron en la TCL 43C61B. Prime Video no acepta texto remoto en este modelo: usa la cruceta para recorrer su teclado en pantalla. RTVE Play aún no se ha probado. El diseño de conexión se comprobó en un emulador Android 36 a 320 × 640 con tamaño de fuente 160 % y modo noche, y a 412 × 915 con tamaño de fuente normal y modo claro. Los controles conectados y la reconexión tras un periodo largo en segundo plano todavía necesitan una prueba física en la TCL.
 
 **No hay acceso directo a apps ni al sintonizador.** En esta TCL, el comando para abrir apps desconectaba el mando y las teclas especiales TV/Fuentes no hacían nada. Se retiraron. Usa Inicio, flechas y OK para llegar a esas funciones.
 

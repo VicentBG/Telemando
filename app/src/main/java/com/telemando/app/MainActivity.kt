@@ -2,10 +2,14 @@ package com.telemando.app
 
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ScrollState
@@ -15,10 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -40,14 +47,25 @@ import com.ryzen.tvremote.protocol.RemoteKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// Original enchanted-library palette: parchment, midnight ink, brass and candlelight.
-private val Ink = Color(0xFF1C2235)
-private val Muted = Color(0xFF675F58)
-private val Canvas = Color(0xFFF5EDDF)
-private val Teal = Color(0xFF82571F)
-private val SoftTeal = Color(0xFFEBDFC9)
-private val White = Color(0xFFFFFCF5)
+// Original enchanted-library palette: parchment by day, moonlit ink by night.
+private val Night = Color(0xFF1C2235)
+private val Ivory = Color(0xFFFFFCF5)
 private val Gold = Color(0xFFE9CE8A)
+private data class MagicPalette(
+    val ink: Color, val muted: Color, val background: Color, val accent: Color,
+    val softAccent: Color, val surface: Color, val error: Color
+)
+private val DayPalette = MagicPalette(Night, Color(0xFF675F58), Color(0xFFF5EDDF),
+    Color(0xFF82571F), Color(0xFFEBDFC9), Ivory, Color(0xFFFFECE9))
+private val NightPalette = MagicPalette(Ivory, Color(0xFFD1C4AB), Color(0xFF141A28),
+    Gold, Color(0xFF34354A), Color(0xFF262D3E), Color(0xFF493641))
+private val LocalMagicPalette = staticCompositionLocalOf { DayPalette }
+private val Ink: Color @Composable get() = LocalMagicPalette.current.ink
+private val Muted: Color @Composable get() = LocalMagicPalette.current.muted
+private val Canvas: Color @Composable get() = LocalMagicPalette.current.background
+private val Teal: Color @Composable get() = LocalMagicPalette.current.accent
+private val SoftTeal: Color @Composable get() = LocalMagicPalette.current.softAccent
+private val White: Color @Composable get() = LocalMagicPalette.current.surface
 
 internal enum class TextMode(val label: String, val detail: String) {
     FAST("Rápido · YouTube", "Enviar la frase de una vez"),
@@ -60,6 +78,10 @@ internal fun parseTextMode(saved: String?): TextMode =
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(0xFFF5EDDF.toInt(), 0xFF141A28.toInt()),
+            navigationBarStyle = SystemBarStyle.auto(0xFFF5EDDF.toInt(), 0xFF141A28.toInt())
+        )
         setContent {
             val scope = rememberCoroutineScope()
             val discovery = remember { DiscoveryManager(applicationContext) }
@@ -102,14 +124,22 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            // The connection normally remains open in the background. If Android suspended it
-            // after exhausting retries, give it one new attempt when the user returns.
+            var leftForegroundAt by remember { mutableLongStateOf(0L) }
+            LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+                leftForegroundAt = SystemClock.elapsedRealtime()
+                discovery.stopDiscovery() // Do not hold a Wi-Fi multicast lock in the background.
+            }
             LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-                if (autoReconnect && lastHost.isNotEmpty() && retryCount >= 3 &&
-                    status is ConnectionStatus.Disconnected) {
+                if (lastHost.isEmpty() && !discovery.isScanning.value) discovery.startDiscovery()
+                val elapsed = leftForegroundAt.takeIf { it != 0L }
+                    ?.let { SystemClock.elapsedRealtime() - it }
+                if (shouldReconnectOnResume(remote.status.value, elapsed,
+                        autoReconnect, lastHost.isNotEmpty())) {
                     retryCount = 0
-                    scope.launch { remote.connect(lastHost) }
+                    val host = lastHost
+                    scope.launch { remote.connect(host) }
                 }
+                leftForegroundAt = 0L
             }
             DisposableEffect(Unit) {
                 onDispose { discovery.stopDiscovery(); remote.disconnect() }
@@ -135,13 +165,18 @@ class MainActivity : ComponentActivity() {
             }
 
             val connected = status is ConnectionStatus.Connected
-            MaterialTheme(colorScheme = lightColorScheme(primary = Teal, onPrimary = White,
+            val dark = isSystemInDarkTheme()
+            CompositionLocalProvider(LocalMagicPalette provides if (dark) NightPalette else DayPalette) {
+            MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Teal, onPrimary = Night,
                 background = Canvas, surface = White, onSurface = Ink,
-                secondary = Ink, surfaceVariant = SoftTeal)) {
+                secondary = Gold, surfaceVariant = SoftTeal)
+            else lightColorScheme(primary = Teal, onPrimary = Ivory,
+                background = Canvas, surface = White, onSurface = Ink,
+                secondary = Night, surfaceVariant = SoftTeal)) {
                 Scaffold(containerColor = Canvas, bottomBar = {
-                    if (connected) NavigationBar(containerColor = Ink) {
+                    if (connected) NavigationBar(containerColor = Night) {
                         val navColors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Ink, selectedTextColor = Gold,
+                            selectedIconColor = Night, selectedTextColor = Gold,
                             indicatorColor = Gold, unselectedIconColor = Gold.copy(alpha = .75f),
                             unselectedTextColor = Gold.copy(alpha = .75f))
                         NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, colors = navColors,
@@ -167,11 +202,30 @@ class MainActivity : ComponentActivity() {
                         Text("Un poco de magia en tu salón", fontFamily = FontFamily.Serif,
                             color = Ink, fontSize = 24.sp, lineHeight = 28.sp,
                             fontWeight = FontWeight.Bold)
-                        StatusCard(selectedName, status, autoReconnect && lastHost.isNotEmpty())
+                        StatusCard(selectedName, status,
+                            retrying = autoReconnect && lastHost.isNotEmpty() && retryCount < 3,
+                            hasSavedHost = lastHost.isNotEmpty())
 
                         if (!connected) {
+                            if (status is ConnectionStatus.Disconnected && lastHost.isNotEmpty() &&
+                                autoReconnect && retryCount >= 3) {
+                                Card(colors = CardDefaults.cardColors(containerColor = SoftTeal),
+                                    shape = RoundedCornerShape(18.dp)) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                                        Text("Conexión interrumpida", fontWeight = FontWeight.SemiBold)
+                                        Text("Comprueba que la TV está encendida y vuelve a intentarlo.",
+                                            color = Muted, fontSize = 13.sp)
+                                        TextButton(onClick = {
+                                            retryCount = 0
+                                            val host = lastHost
+                                            scope.launch { remote.connect(host) }
+                                        }) { Text("Reintentar conexión") }
+                                        TextButton(onClick = ::changeTv) { Text("Buscar otra TV") }
+                                    }
+                                }
+                            }
                             if (status is ConnectionStatus.Error) {
-                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECE9)),
+                                Card(colors = CardDefaults.cardColors(containerColor = LocalMagicPalette.current.error),
                                     shape = RoundedCornerShape(18.dp)) {
                                     Column(Modifier.padding(16.dp)) {
                                         Text((status as ConnectionStatus.Error).message, color = Ink, fontSize = 13.sp)
@@ -218,12 +272,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            }
         }
     }
 }
 
 @Composable
-private fun StatusCard(name: String, status: ConnectionStatus, retrying: Boolean) {
+private fun StatusCard(name: String, status: ConnectionStatus,
+                       retrying: Boolean, hasSavedHost: Boolean) {
     val connected = status is ConnectionStatus.Connected
     val label = when (status) {
         is ConnectionStatus.Connected -> "Conectada · ${status.host}"
@@ -231,9 +287,9 @@ private fun StatusCard(name: String, status: ConnectionStatus, retrying: Boolean
         is ConnectionStatus.NeedsPairing -> "Introduce el código de la TV"
         is ConnectionStatus.Error -> "No se pudo conectar"
         is ConnectionStatus.Disconnected -> if (retrying) "Reconectando con la TV…"
-            else "Elige tu televisor para empezar"
+            else if (hasSavedHost) "TV desconectada" else "Elige tu televisor para empezar"
     }
-    Card(colors = CardDefaults.cardColors(containerColor = Ink),
+    Card(colors = CardDefaults.cardColors(containerColor = Night),
         shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, Gold.copy(alpha = .65f)),
         modifier = Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth()) {
@@ -243,7 +299,7 @@ private fun StatusCard(name: String, status: ConnectionStatus, retrying: Boolean
                 contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Tv, null, tint = Gold) }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(name, color = White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text(name, color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Text(label, color = if (connected) Gold else Color(0xFFE2D6BD),
                     fontSize = 12.sp)
             }
@@ -270,10 +326,17 @@ private fun EnchantedStars(modifier: Modifier = Modifier) {
 private fun ConnectionSetup(devices: List<DiscoveredDevice>, scanning: Boolean,
                             onRescan: () -> Unit, onConnect: (String, String) -> Unit) {
     var ip by remember { mutableStateOf("") }
+    val compact = isCompactLayout()
     SectionTitle("Conectar TV", "CONFIGURACIÓN")
     Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = White)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (compact) {
+                Text("Dispositivos cercanos", fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = onRescan) {
+                    Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
+                    Text("Buscar")
+                }
+            } else Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Dispositivos cercanos", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 TextButton(onClick = onRescan) {
                     Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
@@ -328,29 +391,34 @@ private fun PairingCard(onPair: (String) -> Unit) {
 
 @Composable
 private fun RemotePane(onKey: (RemoteKey) -> Unit) {
+    val compact = isCompactLayout()
+    val keySize = if (compact) 56.dp else 68.dp
+    val okSize = if (compact) 64.dp else 76.dp
     SectionTitle("Mando", "NAVEGACIÓN")
     Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = White)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyButton("Arriba", Icons.Rounded.KeyboardArrowUp) { onKey(RemoteKey.DPAD_UP) }
+            KeyButton("Arriba", Icons.Rounded.KeyboardArrowUp, keySize) { onKey(RemoteKey.DPAD_UP) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                KeyButton("Izquierda", Icons.Rounded.KeyboardArrowLeft) { onKey(RemoteKey.DPAD_LEFT) }
-                FilledIconButton(onClick = { onKey(RemoteKey.DPAD_CENTER) }, modifier = Modifier.size(76.dp),
+                KeyButton("Izquierda", Icons.AutoMirrored.Rounded.KeyboardArrowLeft, keySize) { onKey(RemoteKey.DPAD_LEFT) }
+                FilledIconButton(onClick = { onKey(RemoteKey.DPAD_CENTER) }, modifier = Modifier.size(okSize),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = Teal)) {
-                    Text("OK", color = White, fontWeight = FontWeight.Bold)
+                    Text("OK", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                 }
-                KeyButton("Derecha", Icons.Rounded.KeyboardArrowRight) { onKey(RemoteKey.DPAD_RIGHT) }
+                KeyButton("Derecha", Icons.AutoMirrored.Rounded.KeyboardArrowRight, keySize) { onKey(RemoteKey.DPAD_RIGHT) }
             }
-            KeyButton("Abajo", Icons.Rounded.KeyboardArrowDown) { onKey(RemoteKey.DPAD_DOWN) }
+            KeyButton("Abajo", Icons.Rounded.KeyboardArrowDown, keySize) { onKey(RemoteKey.DPAD_DOWN) }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { onKey(RemoteKey.BACK) }, modifier = Modifier.weight(1f).height(54.dp),
                     shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(4.dp)) {
-                    Icon(Icons.Rounded.ArrowBack, null, Modifier.size(19.dp)); Spacer(Modifier.width(5.dp)); Text("Atrás")
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, if (compact) "Atrás" else null, Modifier.size(21.dp))
+                    if (!compact) { Spacer(Modifier.width(5.dp)); Text("Atrás") }
                 }
                 OutlinedButton(onClick = { onKey(RemoteKey.HOME) }, modifier = Modifier.weight(1f).height(54.dp),
                     shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(4.dp)) {
-                    Icon(Icons.Rounded.Home, null, Modifier.size(19.dp)); Spacer(Modifier.width(5.dp)); Text("Inicio")
+                    Icon(Icons.Rounded.Home, if (compact) "Inicio" else null, Modifier.size(21.dp))
+                    if (!compact) { Spacer(Modifier.width(5.dp)); Text("Inicio") }
                 }
             }
         }
@@ -358,9 +426,9 @@ private fun RemotePane(onKey: (RemoteKey) -> Unit) {
     SectionTitle("Sonido", "VOLUMEN")
     Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = SoftTeal)) {
         Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(Triple(RemoteKey.VOLUME_DOWN, Icons.Rounded.VolumeDown, "Bajar volumen"),
-                Triple(RemoteKey.VOLUME_MUTE, Icons.Rounded.VolumeOff, "Silenciar"),
-                Triple(RemoteKey.VOLUME_UP, Icons.Rounded.VolumeUp, "Subir volumen")).forEach { (key, icon, label) ->
+            listOf(Triple(RemoteKey.VOLUME_DOWN, Icons.AutoMirrored.Rounded.VolumeDown, "Bajar volumen"),
+                Triple(RemoteKey.VOLUME_MUTE, Icons.AutoMirrored.Rounded.VolumeOff, "Silenciar"),
+                Triple(RemoteKey.VOLUME_UP, Icons.AutoMirrored.Rounded.VolumeUp, "Subir volumen")).forEach { (key, icon, label) ->
                 OutlinedButton(onClick = { onKey(key) }, modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(4.dp)) {
                     Icon(icon, contentDescription = label, modifier = Modifier.size(25.dp))
@@ -399,7 +467,7 @@ private fun SearchPane(text: String, onTextChange: (String) -> Unit, mode: TextM
             Button(onClick = onSend, enabled = text.isNotBlank() && !sending,
                 modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp)) {
                 if (sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Rounded.Send, null, Modifier.size(18.dp))
+                else Icon(Icons.AutoMirrored.Rounded.Send, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp)); Text(if (sending) "Enviando…" else "Enviar a la TV")
             }
             Text("En Prime Video utiliza el mando para recorrer el teclado en pantalla. " +
@@ -435,8 +503,16 @@ private fun SectionTitle(title: String, caption: String) {
 }
 
 @Composable
-private fun KeyButton(label: String, icon: ImageVector, action: () -> Unit) {
-    OutlinedIconButton(onClick = action, modifier = Modifier.size(68.dp),
+private fun isCompactLayout(): Boolean {
+    val widthPx = LocalWindowInfo.current.containerSize.width
+    val density = LocalDensity.current
+    return with(density) { widthPx.toDp() < 360.dp || fontScale >= 1.3f }
+}
+
+@Composable
+private fun KeyButton(label: String, icon: ImageVector, size: androidx.compose.ui.unit.Dp,
+                      action: () -> Unit) {
+    OutlinedIconButton(onClick = action, modifier = Modifier.size(size),
         shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Teal.copy(alpha = .45f))) {
         Icon(icon, contentDescription = label, modifier = Modifier.size(32.dp))
     }
