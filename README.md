@@ -12,21 +12,29 @@ Mando Android para una **TCL 43C61B con Google TV**. La interfaz de la televisi�
 
 ### Compatibilidad comprobada
 
-Emparejamiento, navegación, volumen, reconexión, búsqueda en YouTube (rápido) y Netflix (pausado) se probaron en la TCL 43C61B. Prime Video no acepta texto remoto en este modelo: usa la cruceta para recorrer su teclado en pantalla. RTVE Play aún no se ha probado. El diseño de conexión se comprobó en un emulador Android 36 a 320 × 640 con tamaño de fuente 160 % y modo noche, y a 412 × 915 con tamaño de fuente normal y modo claro. Los controles conectados y la reconexión tras un periodo largo en segundo plano todavía necesitan una prueba física en la TCL.
+Emparejamiento, navegación, volumen, reconexión, búsqueda en YouTube (rápido) y Netflix (pausado) se probaron en la TCL 43C61B. Prime Video no acepta texto remoto en este modelo: usa la cruceta para recorrer su teclado en pantalla. RTVE Play aún no se ha probado. El diseño de conexión se comprobó en un emulador Android 36 a 320 × 640 con tamaño de fuente 160 % y modo noche, y a 412 × 915 con tamaño de fuente normal y modo claro. El usuario ha comprobado también la reconexión tras dejar la app en segundo plano más de cinco minutos en su TCL.
 
 **No hay acceso directo a apps ni al sintonizador.** En esta TCL, el comando para abrir apps desconectaba el mando y las teclas especiales TV/Fuentes no hacían nada. Se retiraron. Usa Inicio, flechas y OK para llegar a esas funciones.
 
-## Instalar
+## Descargar e instalar
 
-Abre este proyecto en Android Studio con **JDK 17** y **Android SDK 36** y ejecuta el módulo `app` en un teléfono Android 8.0 o superior. O genera la APK localmente:
+Descarga la **[APK pública firmada de la última versión](https://github.com/VicentBG/Telemando/releases/latest)** en un móvil Android 8.0 o superior. Si tienes instalada una APK de **debug** de las pruebas, desinstálala primero: Android no puede actualizarla con la firma de producción y perderás el emparejamiento local (vuelve a introducir el PIN de la TV). Las futuras APK públicas firmadas con la misma clave podrán actualizarse sin desinstalar. La huella SHA-256 del archivo y de su certificado figuran en las notas de cada versión.
+
+Para compilar desde código, abre el proyecto en Android Studio con **JDK 17** y **Android SDK 36** y ejecuta `app`, o genera una APK de desarrollo:
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
-La APK de desarrollo se crea en `app/build/outputs/apk/debug/app-debug.apk` (no se incluye en Git). Con depuración USB puedes instalarla con `adb install -r app/build/outputs/apk/debug/app-debug.apk`. La firma *debug* no es adecuada para publicar una versión de producción.
+La APK de desarrollo se crea en `app/build/outputs/apk/debug/app-debug.apk` (no se incluye en Git). Con depuración USB puedes instalarla con `adb install -r app/build/outputs/apk/debug/app-debug.apk`. Para compilar y publicar una versión firmada consulta [la guía de publicación](docs/RELEASING.md).
 
 Móvil y TV deben estar en la **misma red local**, sin aislamiento entre clientes ni VPN que bloquee la red. Selecciona la TV detectada o introduce su IP desde los ajustes de red de Google TV. Introduce el código que aparece en la pantalla de la TV. Para buscar, abre un campo de búsqueda **en la TV** y después usa la pestaña Buscar del móvil.
+
+## Capturas
+
+Pantalla de conexión en emulador, sin una TV real asociada:
+
+<img src="docs/screenshots/conexion-dia.png" alt="Telemando en modo claro" width="240" /> <img src="docs/screenshots/conexion-noche.png" alt="Telemando en modo oscuro con texto ampliado" width="200" />
 
 ## Tecnología y privacidad
 

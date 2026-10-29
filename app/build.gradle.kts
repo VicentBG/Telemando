@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Signing credentials come only from the developer's environment, never from Git.
+val releaseKeystore = System.getenv("TELEMANDO_RELEASE_KEYSTORE")
+val releasePassword = System.getenv("TELEMANDO_RELEASE_PASSWORD")
+val releaseAlias = System.getenv("TELEMANDO_RELEASE_ALIAS")
+val releaseKeyPassword = System.getenv("TELEMANDO_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseKeystore, releasePassword, releaseAlias, releaseKeyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.telemando.app"
     compileSdk = 36
@@ -11,14 +19,39 @@ android {
         applicationId = "com.telemando.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
+    }
+    signingConfigs {
+        if (hasReleaseSigning) create("release") {
+            storeFile = file(releaseKeystore!!)
+            storePassword = releasePassword
+            keyAlias = releaseAlias
+            keyPassword = releaseKeyPassword
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false // Keep the proven protobuf/TLS protocol unchanged in v1.
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+}
+
+tasks.register("verifyReleaseSigning") {
+    doLast {
+        check(hasReleaseSigning && file(releaseKeystore!!).isFile) {
+            "Release signing is not configured. Set TELEMANDO_RELEASE_* environment variables."
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn("verifyReleaseSigning")
 }
 
 dependencies {
